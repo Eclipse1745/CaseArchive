@@ -59,8 +59,6 @@ export const api = {
 
   getDocument: (id) => request('GET', `/documents/${id}`),
   verifyDocument: (id, actor) => request('POST', `/documents/${id}/verify`, { actor }),
-  tamperDocument: (id, actor) => request('POST', `/documents/${id}/tamper`, { actor }),
-  restoreDocument: (id, actor) => request('POST', `/documents/${id}/restore`, { actor }),
   uploadDocument: (caseId, formData, actor) =>
     request('POST', `/cases/${caseId}/documents`, { body: formData, actor, isForm: true }),
   downloadUrl: (id) => `${BASE}/documents/${id}/download?ws=${WORKSPACE_ID}`,

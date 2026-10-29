@@ -3,7 +3,6 @@ export const ROLES = [
     key: 'Investigator',
     label: 'Investigator',
     canUpload: true,
-    canRunSelfTest: false,
     canCreateCase: true,
     canLogEvidence: true,
   },
@@ -11,7 +10,6 @@ export const ROLES = [
     key: 'Prosecutor',
     label: 'Prosecutor',
     canUpload: false,
-    canRunSelfTest: false,
     canCreateCase: false,
     canLogEvidence: false,
   },
@@ -19,17 +17,8 @@ export const ROLES = [
     key: 'Court Clerk',
     label: 'Court Clerk',
     canUpload: false,
-    canRunSelfTest: false,
     canCreateCase: false,
     canLogEvidence: false,
-  },
-  {
-    key: 'Admin',
-    label: 'Admin',
-    canUpload: true,
-    canRunSelfTest: true,
-    canCreateCase: true,
-    canLogEvidence: true,
   },
 ];
 

@@ -125,28 +125,6 @@ export default function DocumentCard({ doc, actor, expanded, onToggle, onChanged
                 <a className="btn btn--outline btn--sm" href={api.downloadUrl(doc.id)}>
                   Download
                 </a>
-                {actor.canRunSelfTest && !compromised && (
-                  <button
-                    className="btn btn--danger btn--sm"
-                    disabled={busy}
-                    onClick={() =>
-                      runAction(() => api.tamperDocument(doc.id, actor), 'Integrity self-test complete — the check correctly flagged the change.')
-                    }
-                  >
-                    ⚠ Run Integrity Self-Test
-                  </button>
-                )}
-                {actor.canRunSelfTest && compromised && (
-                  <button
-                    className="btn btn--primary btn--sm"
-                    disabled={busy}
-                    onClick={() =>
-                      runAction(() => api.restoreDocument(doc.id, actor), 'Document restored to its sealed original.')
-                    }
-                  >
-                    Restore Sealed Original
-                  </button>
-                )}
               </div>
             </>
           )}

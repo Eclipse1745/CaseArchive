@@ -1,20 +1,33 @@
 const express = require('express');
-const db = require('../db');
-const { seed } = require('../seed');
+const { supabase, run, mapAudit } = require('../db');
+const files = require('../files');
+const { h, intParam } = require('../util');
 
 const router = express.Router();
 
-router.get('/cases/:id/audit', (req, res) => {
-  const caseId = Number(req.params.id);
-  const entries = db.state.auditLog
-    .filter((a) => a.caseId === caseId)
-    .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-  res.json({ entries });
-});
+router.get('/cases/:id/audit', h(async (req, res) => {
+  const caseId = intParam(req.params.id);
+  if (!caseId) return res.json({ entries: [] });
+  const rows = await run(
+    supabase
+      .from('audit_log')
+      .select('*')
+      .eq('workspace_id', req.workspaceId)
+      .eq('case_id', caseId)
+      .order('ts', { ascending: false })
+  );
+  res.json({ entries: rows.map(mapAudit) });
+}));
 
-router.post('/reset', (req, res) => {
-  db.reset(seed());
+// Clears only THIS workspace, never anyone else's data.
+router.post('/reset', h(async (req, res) => {
+  const ws = req.workspaceId;
+  await run(supabase.from('audit_log').delete().eq('workspace_id', ws));
+  await run(supabase.from('evidence').delete().eq('workspace_id', ws));
+  await run(supabase.from('documents').delete().eq('workspace_id', ws));
+  await run(supabase.from('cases').delete().eq('workspace_id', ws));
+  await files.clearWorkspace(ws);
   res.json({ ok: true });
-});
+}));
 
 module.exports = router;

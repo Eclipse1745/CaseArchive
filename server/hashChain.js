@@ -1,5 +1,4 @@
 const crypto = require('crypto');
-const fs = require('fs');
 
 const GENESIS_HASH = '0'.repeat(64);
 
@@ -7,18 +6,14 @@ function sha256(buffer) {
   return crypto.createHash('sha256').update(buffer).digest('hex');
 }
 
-function hashFile(filePath) {
-  const buffer = fs.readFileSync(filePath);
-  return sha256(buffer);
-}
-
 function computeBlockHash({ chainIndex, prevBlockHash, originalHash, sealedAt, documentId }) {
   const payload = `${chainIndex}|${prevBlockHash}|${originalHash}|${sealedAt}|${documentId}`;
   return sha256(Buffer.from(payload, 'utf-8'));
 }
 
-function verifyDocument(doc) {
-  const currentHash = hashFile(doc.filePath);
+// getHash(doc) -> Promise<string>: the hash of the file as it is stored right now.
+async function verifyDocument(doc, getHash) {
+  const currentHash = await getHash(doc);
   return {
     verified: currentHash === doc.originalHash,
     currentHash,
@@ -26,46 +21,36 @@ function verifyDocument(doc) {
   };
 }
 
-function verifyChain(documents) {
+async function verifyChain(documents, getHash) {
   const sorted = [...documents].sort((a, b) => a.chainIndex - b.chainIndex);
-  let expectedPrev = GENESIS_HASH;
-  const blocks = [];
-  let chainIntact = true;
+  const currentHashes = await Promise.all(sorted.map((d) => getHash(d)));
 
-  for (const doc of sorted) {
-    const recomputedBlockHash = computeBlockHash({
+  let expectedPrev = GENESIS_HASH;
+  let chainIntact = true;
+  const blocks = sorted.map((doc, i) => {
+    const recomputed = computeBlockHash({
       chainIndex: doc.chainIndex,
       prevBlockHash: expectedPrev,
       originalHash: doc.originalHash,
       sealedAt: doc.sealedAt,
       documentId: doc.id,
     });
-    const linkIntact = recomputedBlockHash === doc.blockHash && expectedPrev === doc.prevBlockHash;
+    const linkIntact = recomputed === doc.blockHash && expectedPrev === doc.prevBlockHash;
     if (!linkIntact) chainIntact = false;
+    expectedPrev = doc.blockHash;
 
-    const content = verifyDocument(doc);
-
-    blocks.push({
+    return {
       documentId: doc.id,
       chainIndex: doc.chainIndex,
       blockHash: doc.blockHash,
       prevBlockHash: doc.prevBlockHash,
       linkIntact,
-      contentVerified: content.verified,
-      currentHash: content.currentHash,
-    });
-
-    expectedPrev = doc.blockHash;
-  }
+      contentVerified: currentHashes[i] === doc.originalHash,
+      currentHash: currentHashes[i],
+    };
+  });
 
   return { chainIntact, blocks };
 }
 
-module.exports = {
-  GENESIS_HASH,
-  sha256,
-  hashFile,
-  computeBlockHash,
-  verifyDocument,
-  verifyChain,
-};
+module.exports = { GENESIS_HASH, sha256, computeBlockHash, verifyDocument, verifyChain };

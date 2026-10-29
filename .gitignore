@@ -6,3 +6,5 @@ server/tmp_uploads/
 client/dist/
 .DS_Store
 *.log
+.env
+server/.env

@@ -1,140 +1,156 @@
 const express = require('express');
-const fs = require('fs');
 const path = require('path');
 const multer = require('multer');
-const db = require('../db');
-const { hashFile, computeBlockHash, verifyDocument, GENESIS_HASH } = require('../hashChain');
+const { supabase, run, logAudit, mapDoc } = require('../db');
+const { sha256, computeBlockHash, GENESIS_HASH } = require('../hashChain');
 const { inferFileType } = require('../fileTypes');
 const { analyze } = require('../insights');
-const { UPLOADS_DIR, ORIGINALS_DIR } = require('../seed');
+const files = require('../files');
+const { getActor, h, intParam } = require('../util');
 
 const router = express.Router();
-const upload = multer({ dest: path.join(__dirname, '..', 'tmp_uploads') });
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 
-function logAudit({ caseId, documentId, actor, action, details }) {
-  const entry = {
-    id: db.nextId('audit'),
-    caseId,
-    documentId,
-    actorRole: actor.role,
-    actorName: actor.name,
-    action,
-    details,
-    timestamp: new Date().toISOString(),
-  };
-  db.state.auditLog.push(entry);
-  db.save();
-  return entry;
+async function findDoc(ws, id) {
+  if (!id) return null;
+  return run(supabase.from('documents').select('*').eq('workspace_id', ws).eq('id', id).maybeSingle());
 }
 
-function getActor(req) {
-  return {
-    role: req.headers['x-actor-role'] || 'Investigator',
-    name: req.headers['x-actor-name'] || 'System User',
-  };
-}
+const verificationOf = (doc, hash) => ({
+  verified: hash === doc.originalHash,
+  currentHash: hash,
+  sealedHash: doc.originalHash,
+});
 
-router.post('/cases/:id/documents', upload.single('file'), (req, res) => {
-  const caseId = Number(req.params.id);
-  const c = db.state.cases.find((x) => x.id === caseId);
+router.post('/cases/:id/documents', upload.single('file'), h(async (req, res) => {
+  const ws = req.workspaceId;
+  const caseId = intParam(req.params.id);
+  const c = caseId
+    ? await run(supabase.from('cases').select('id').eq('workspace_id', ws).eq('id', caseId).maybeSingle())
+    : null;
   if (!c) return res.status(404).json({ error: 'Case not found' });
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
   const actor = getActor(req);
   const { docType, title } = req.body;
 
-  const existingDocs = db.state.documents.filter((d) => d.caseId === caseId);
-  const chainIndex = existingDocs.length;
-  const prevBlockHash = chainIndex === 0
-    ? GENESIS_HASH
-    : existingDocs.sort((a, b) => a.chainIndex - b.chainIndex)[existingDocs.length - 1].blockHash;
+  const last = await run(
+    supabase
+      .from('documents')
+      .select('chain_index, block_hash')
+      .eq('workspace_id', ws)
+      .eq('case_id', caseId)
+      .order('chain_index', { ascending: false })
+      .limit(1)
+  );
+  const chainIndex = last.length ? last[0].chain_index + 1 : 0;
+  const prevBlockHash = last.length ? last[0].block_hash : GENESIS_HASH;
 
-  const documentId = db.nextId('document');
-  const fileName = `case${caseId}_doc${documentId}${path.extname(req.file.originalname) || '.txt'}`;
-  const filePath = path.join(UPLOADS_DIR, fileName);
-  const originalPath = path.join(ORIGINALS_DIR, fileName);
+  const documentId = await run(supabase.rpc('next_document_id'));
+  const rawExt = path.extname(req.file.originalname).toLowerCase();
+  const ext = /^\.[a-z0-9]{1,8}$/.test(rawExt) ? rawExt : '.txt';
+  const fileName = `case${caseId}_doc${documentId}${ext}`;
 
-  fs.copyFileSync(req.file.path, filePath);
-  fs.copyFileSync(req.file.path, originalPath);
-  fs.unlinkSync(req.file.path);
-
-  const originalHash = hashFile(filePath);
+  const originalHash = sha256(req.file.buffer);
   const sealedAt = new Date().toISOString();
   const blockHash = computeBlockHash({ chainIndex, prevBlockHash, originalHash, sealedAt, documentId });
 
-  const doc = {
-    id: documentId,
-    caseId,
-    docType: docType || 'Other',
-    title: title || req.file.originalname,
-    uploader: actor.name,
-    sealedAt,
-    filePath,
-    originalPath,
-    fileName,
-    fileType: inferFileType(fileName),
-    originalHash,
-    chainIndex,
-    prevBlockHash,
-    blockHash,
-  };
-  db.state.documents.push(doc);
-  db.save();
+  await files.put(ws, 'uploads', fileName, req.file.buffer, req.file.mimetype);
+  await files.put(ws, 'originals', fileName, req.file.buffer, req.file.mimetype);
 
-  logAudit({
+  let row;
+  try {
+    row = await run(
+      supabase
+        .from('documents')
+        .insert({
+          id: documentId,
+          workspace_id: ws,
+          case_id: caseId,
+          doc_type: docType || 'Other',
+          title: title || req.file.originalname,
+          uploader: actor.name,
+          sealed_at: sealedAt,
+          file_name: fileName,
+          file_type: inferFileType(fileName),
+          original_hash: originalHash,
+          chain_index: chainIndex,
+          prev_block_hash: prevBlockHash,
+          block_hash: blockHash,
+        })
+        .select()
+        .single()
+    );
+  } catch (e) {
+    await files.remove(ws, 'uploads', fileName);
+    await files.remove(ws, 'originals', fileName);
+    if (e.code === '23505') {
+      return res.status(409).json({ error: 'Another document was sealed at the same moment. Please upload again.' });
+    }
+    throw e;
+  }
+
+  await logAudit(ws, {
     caseId,
     documentId,
     actor,
     action: 'DOCUMENT_UPLOADED',
-    details: `"${doc.title}" uploaded and sealed (SHA-256: ${originalHash.slice(0, 12)}...), block #${chainIndex}.`,
+    details: `"${row.title}" uploaded and sealed (SHA-256: ${originalHash.slice(0, 12)}...), block #${chainIndex}.`,
   });
 
-  res.status(201).json({ document: doc });
-});
+  res.status(201).json({ document: mapDoc(row) });
+}));
 
-router.get('/documents/:id', (req, res) => {
-  const docId = Number(req.params.id);
-  const doc = db.state.documents.find((d) => d.id === docId);
-  if (!doc) return res.status(404).json({ error: 'Document not found' });
+router.get('/documents/:id', h(async (req, res) => {
+  const ws = req.workspaceId;
+  const row = await findDoc(ws, intParam(req.params.id));
+  if (!row) return res.status(404).json({ error: 'Document not found' });
+  const doc = mapDoc(row);
 
-  const verification = verifyDocument(doc);
+  const { buffer, hash } = await files.readWithHash(ws, doc);
   let content = null;
   let insights = null;
-  if (doc.fileType === 'text') {
-    try {
-      content = fs.readFileSync(doc.filePath, 'utf-8');
-      insights = analyze(content);
-    } catch (e) {
-      content = null;
-    }
+  if (doc.fileType === 'text' && buffer) {
+    content = buffer.toString('utf-8');
+    insights = analyze(content);
   }
 
-  res.json({
-    document: { ...doc, filePath: undefined, originalPath: undefined },
-    verification,
-    content,
-    insights,
-  });
-});
+  res.json({ document: doc, verification: verificationOf(doc, hash), content, insights });
+}));
 
-router.get('/documents/:id/view', (req, res) => {
-  const docId = Number(req.params.id);
-  const doc = db.state.documents.find((d) => d.id === docId);
-  if (!doc) return res.status(404).json({ error: 'Document not found' });
+// Inline viewing is limited to safe types so an uploaded .html file can never run on our origin.
+router.get('/documents/:id/view', h(async (req, res) => {
+  const ws = req.workspaceId;
+  const row = await findDoc(ws, intParam(req.params.id));
+  if (!row) return res.status(404).json({ error: 'Document not found' });
+  const doc = mapDoc(row);
 
+  const { buffer } = await files.readWithHash(ws, doc);
+  if (!buffer) return res.status(404).json({ error: 'File is missing from storage' });
+
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  if (doc.fileType === 'text') {
+    res.type('text/plain; charset=utf-8');
+  } else if (doc.fileType === 'pdf' || doc.fileType === 'image') {
+    res.type(path.extname(doc.fileName));
+  } else {
+    return res.status(415).json({ error: 'No inline preview for this file type. Use Download.' });
+  }
   res.setHeader('Content-Disposition', `inline; filename="${doc.fileName}"`);
-  res.sendFile(doc.filePath);
-});
+  res.send(buffer);
+}));
 
-router.post('/documents/:id/verify', (req, res) => {
-  const docId = Number(req.params.id);
-  const doc = db.state.documents.find((d) => d.id === docId);
-  if (!doc) return res.status(404).json({ error: 'Document not found' });
+router.post('/documents/:id/verify', h(async (req, res) => {
+  const ws = req.workspaceId;
+  const row = await findDoc(ws, intParam(req.params.id));
+  if (!row) return res.status(404).json({ error: 'Document not found' });
+  const doc = mapDoc(row);
 
   const actor = getActor(req);
-  const result = verifyDocument(doc);
+  const { hash } = await files.readWithHash(ws, doc);
+  const result = verificationOf(doc, hash);
 
-  logAudit({
+  await logAudit(ws, {
     caseId: doc.caseId,
     documentId: doc.id,
     actor,
@@ -145,40 +161,50 @@ router.post('/documents/:id/verify', (req, res) => {
   });
 
   res.json({ verification: result });
-});
+}));
 
-router.get('/documents/:id/download', (req, res) => {
-  const docId = Number(req.params.id);
-  const doc = db.state.documents.find((d) => d.id === docId);
-  if (!doc) return res.status(404).json({ error: 'Document not found' });
+router.get('/documents/:id/download', h(async (req, res) => {
+  const ws = req.workspaceId;
+  const row = await findDoc(ws, intParam(req.params.id));
+  if (!row) return res.status(404).json({ error: 'Document not found' });
+  const doc = mapDoc(row);
 
-  const actor = getActor(req);
-  logAudit({
+  const { buffer } = await files.readWithHash(ws, doc);
+  if (!buffer) return res.status(404).json({ error: 'File is missing from storage' });
+
+  await logAudit(ws, {
     caseId: doc.caseId,
     documentId: doc.id,
-    actor,
+    actor: getActor(req),
     action: 'DOCUMENT_DOWNLOADED',
     details: `"${doc.title}" downloaded.`,
   });
 
-  res.download(doc.filePath, doc.title.replace(/[^a-z0-9\-_]+/gi, '_') + path.extname(doc.fileName));
-});
+  res.attachment(doc.title.replace(/[^a-z0-9\-_]+/gi, '_') + path.extname(doc.fileName));
+  res.send(buffer);
+}));
 
-router.post('/documents/:id/tamper', (req, res) => {
-  const docId = Number(req.params.id);
-  const doc = db.state.documents.find((d) => d.id === docId);
-  if (!doc) return res.status(404).json({ error: 'Document not found' });
+// Demo feature: deliberately alters the stored file so the integrity check can be shown failing.
+router.post('/documents/:id/tamper', h(async (req, res) => {
+  const ws = req.workspaceId;
+  const row = await findDoc(ws, intParam(req.params.id));
+  if (!row) return res.status(404).json({ error: 'Document not found' });
+  const doc = mapDoc(row);
 
   const actor = getActor(req);
-  const original = fs.readFileSync(doc.filePath, 'utf-8');
+  const { buffer } = await files.readWithHash(ws, doc);
+  if (!buffer) return res.status(404).json({ error: 'File is missing from storage' });
+
+  const original = buffer.toString('utf-8');
   const tampered = original.replace(
     /\n\n(?=[A-Z][a-z]+(?:\s[A-Z][a-z]*)*:)/,
     '\n\n[ALTERED] Amount/detail silently modified after filing.\n\n'
   );
   const finalText = tampered !== original ? tampered : original + '\n\n[ALTERED] Unauthorized addition appended after sealing.';
-  fs.writeFileSync(doc.filePath, finalText, 'utf-8');
+  await files.put(ws, 'uploads', doc.fileName, Buffer.from(finalText, 'utf-8'), 'text/plain');
+  files.invalidate(ws, doc.id);
 
-  logAudit({
+  await logAudit(ws, {
     caseId: doc.caseId,
     documentId: doc.id,
     actor,
@@ -186,28 +212,30 @@ router.post('/documents/:id/tamper', (req, res) => {
     details: `Integrity self-test triggered a controlled modification on "${doc.title}".`,
   });
 
-  const verification = verifyDocument(doc);
-  res.json({ verification });
-});
+  const { hash } = await files.readWithHash(ws, doc);
+  res.json({ verification: verificationOf(doc, hash) });
+}));
 
-router.post('/documents/:id/restore', (req, res) => {
-  const docId = Number(req.params.id);
-  const doc = db.state.documents.find((d) => d.id === docId);
-  if (!doc) return res.status(404).json({ error: 'Document not found' });
+router.post('/documents/:id/restore', h(async (req, res) => {
+  const ws = req.workspaceId;
+  const row = await findDoc(ws, intParam(req.params.id));
+  if (!row) return res.status(404).json({ error: 'Document not found' });
+  const doc = mapDoc(row);
 
-  const actor = getActor(req);
-  fs.copyFileSync(doc.originalPath, doc.filePath);
+  const original = await files.get(ws, 'originals', doc.fileName);
+  await files.put(ws, 'uploads', doc.fileName, original);
+  files.invalidate(ws, doc.id);
 
-  logAudit({
+  await logAudit(ws, {
     caseId: doc.caseId,
     documentId: doc.id,
-    actor,
+    actor: getActor(req),
     action: 'DOCUMENT_RESTORED',
     details: `"${doc.title}" restored to its sealed original state.`,
   });
 
-  const verification = verifyDocument(doc);
-  res.json({ verification });
-});
+  const { hash } = await files.readWithHash(ws, doc);
+  res.json({ verification: verificationOf(doc, hash) });
+}));
 
 module.exports = router;

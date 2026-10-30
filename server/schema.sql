@@ -1,4 +1,3 @@
--- Run this once in the Supabase SQL editor.
 
 create table if not exists cases (
   id            int generated always as identity primary key,

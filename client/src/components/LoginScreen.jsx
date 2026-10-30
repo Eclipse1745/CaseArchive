@@ -43,9 +43,10 @@ export default function LoginScreen({ onLogin, initialName }) {
           </button>
         </form>
 
-        <p className="login-card__note">
-          Pilot environment — password authentication will be enabled ahead of full rollout.
-        </p>
+      <p className="login-card__note">
+  Demo environment — hosted on a free server, so the first load may take up to a minute
+  while it wakes up. If something fails, please reload the page.
+</p>
       </div>
     </div>
   );

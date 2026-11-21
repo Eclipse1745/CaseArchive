@@ -165,7 +165,7 @@ export const api = {
   getCases: () => request('GET', '/cases'),
   createCase: (payload) => request('POST', '/cases', { body: payload }),
   updateCase: (id, payload) => request('PATCH', `/cases/${id}`, { body: payload }),
-  verifyAll: (id) => request('POST', `/cases/${id}/verify-all`),
+  verifyAll: (id, purpose) => request('POST', `/cases/${id}/verify-all`, purpose ? { body: { purpose } } : {}),
   getCase: (id) => request('GET', `/cases/${id}`),
   getAudit: (caseId) => request('GET', `/cases/${caseId}/audit`),
 

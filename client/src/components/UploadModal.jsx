@@ -21,7 +21,7 @@ export default function UploadModal({ caseId, actor, onClose, onUploaded, onToas
       formData.append('title', title || file.name);
       formData.append('docType', docType);
       await api.uploadDocument(caseId, formData, actor);
-      onToast('Document hashed and sealed into the case chain.', 'success');
+      onToast('Document sealed into the case chain. Click it in the list to preview it and verify its integrity.', 'success');
       onUploaded();
       onClose();
     } catch (e2) {

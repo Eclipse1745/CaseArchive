@@ -1,6 +1,6 @@
 const crypto = require('crypto');
 const express = require('express');
-const { supabase, run } = require('../db');
+const { supabase, run, logAudit } = require('../db');
 const { requireAccess, requireInvestigator, forget } = require('../auth');
 const { h } = require('../util');
 
@@ -57,6 +57,12 @@ router.post('/claim', requireAccess, h(async (req, res) => {
   );
   if (rows.length === 0) return res.status(409).json({ error: 'The name for this invite is already confirmed.' });
   forget(token);
+  await logAudit(req.workspaceId, {
+    caseId: null, // workspace-level event: shown in every case's audit trail
+    actor: { role, name, invitedBy: req.actor.invitedBy },
+    action: 'MEMBER_JOINED',
+    details: `${name} joined the workspace as ${role} through a one-time invite link.`,
+  });
   res.json({ name, role, claimed: true });
 }));
 
@@ -74,6 +80,12 @@ router.post('/invites', requireAccess, requireInvestigator, h(async (req, res) =
       expires_at: new Date(Date.now() + INVITE_TTL_MS).toISOString(),
     })
   );
+  await logAudit(req.workspaceId, {
+    caseId: null,
+    actor: req.actor,
+    action: 'INVITE_CREATED',
+    details: 'A one-time invite link was created (single use, expires in 7 days).',
+  });
   res.status(201).json({ token: code });
 }));
 

@@ -12,7 +12,7 @@ router.get('/cases/:id/audit', h(async (req, res) => {
       .from('audit_log')
       .select('*')
       .eq('workspace_id', req.workspaceId)
-      .eq('case_id', caseId)
+      .or(`case_id.eq.${caseId},case_id.is.null`)
       .order('ts', { ascending: false })
   );
   res.json({ entries: rows.map(mapAudit) });

@@ -54,9 +54,12 @@ export default function DocumentCard({ doc, actor, expanded, onToggle, onChanged
             Sealed {new Date(doc.sealedAt).toLocaleDateString()} · block #{doc.chainIndex} · {doc.uploader}
           </span>
         </div>
-        <span className={`stamp ${compromised ? 'stamp--bad' : 'stamp--ok'}`}>
-          {compromised ? 'Compromised' : 'Verified'}
-        </span>
+        <div className="doc-card__side">
+          <span className={`stamp ${compromised ? 'stamp--bad' : 'stamp--ok'}`}>
+            {compromised ? 'Compromised' : 'Verified'}
+          </span>
+          <span className="doc-card__hint">{expanded ? 'Click to close ▴' : 'Click to preview & verify ▾'}</span>
+        </div>
       </button>
 
       {expanded && (

@@ -170,13 +170,20 @@ router.post('/:id/verify-all', h(async (req, res) => {
   const failed = blocks.filter((b) => !b.contentVerified);
   const ok = chainIntact && failed.length === 0;
 
+  // The case report re-verifies first so its printed result is fresh, but it is logged as a report, not a verify.
+  const forReport = req.body?.purpose === 'report';
+  const outcome = ok
+    ? `all ${docs.length} document(s) verified; hash chain intact`
+    : `${failed.length} of ${docs.length} document(s) failed verification${chainIntact ? '' : '; hash chain broken'}`;
   await logAudit(ws, {
     caseId,
     actor: getActor(req),
-    action: ok ? 'CASE_VERIFIED_PASS' : 'CASE_VERIFIED_FAIL',
-    details: ok
-      ? `All ${docs.length} document(s) in ${c.case_number} verified; hash chain intact.`
-      : `${failed.length} of ${docs.length} document(s) in ${c.case_number} failed verification${chainIntact ? '' : '; hash chain broken'}.`,
+    action: forReport ? 'CASE_REPORT_GENERATED' : ok ? 'CASE_VERIFIED_PASS' : 'CASE_VERIFIED_FAIL',
+    details: forReport
+      ? `Case report for ${c.case_number} generated (print / save as PDF). At that moment: ${outcome}.`
+      : ok
+        ? `All ${docs.length} document(s) in ${c.case_number} verified; hash chain intact.`
+        : `${failed.length} of ${docs.length} document(s) in ${c.case_number} failed verification${chainIntact ? '' : '; hash chain broken'}.`,
   });
 
   res.json({ total: docs.length, failed: failed.length, chainIntact, failedDocumentIds: failed.map((b) => b.documentId) });

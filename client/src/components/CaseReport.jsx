@@ -10,7 +10,7 @@ export default function CaseReport({ caseDetail, auditEntries, actor, onDone, on
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([api.verifyAll(c.id), api.getEvidenceList(c.id)])
+    Promise.all([api.verifyAll(c.id, 'report'), api.getEvidenceList(c.id)])
       .then(([verification, ev]) => {
         if (cancelled) return;
         setData({ verification, evidence: ev.evidence, at: new Date() });

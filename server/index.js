@@ -4,6 +4,8 @@ const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
 
+const { requireAccess } = require('./auth');
+const sessionRouter = require('./routes/session');
 const casesRouter = require('./routes/cases');
 const documentsRouter = require('./routes/documents');
 const auditRouter = require('./routes/audit');
@@ -12,21 +14,16 @@ const evidenceRouter = require('./routes/evidence');
 const PORT = process.env.PORT || 4000;
 
 const app = express();
+app.set('trust proxy', 1);
 app.use(cors());
 app.use(express.json());
 
 app.get('/api/health', (req, res) => res.json({ ok: true }));
 
-// Every request belongs to a workspace (a private sandbox per browser, or a shared one via ?workspace=).
-// The browser sends it as a header; <img>/<iframe>/download links send it as ?ws=.
-app.use('/api', (req, res, next) => {
-  const ws = req.get('x-workspace-id') || req.query.ws;
-  if (!ws || !/^[A-Za-z0-9_-]{6,64}$/.test(ws)) {
-    return res.status(400).json({ error: 'Missing or invalid workspace id.' });
-  }
-  req.workspaceId = ws;
-  next();
-});
+app.use('/api/session', sessionRouter);
+
+// Everything below needs a valid access token (it decides the workspace and the role).
+app.use('/api', requireAccess);
 
 app.use('/api/cases', casesRouter);
 app.use('/api', documentsRouter);

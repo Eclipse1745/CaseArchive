@@ -7,6 +7,7 @@ const { inferFileType } = require('../fileTypes');
 const { analyze } = require('../insights');
 const files = require('../files');
 const { getActor, h, intParam } = require('../util');
+const { requireInvestigator } = require('../auth');
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
@@ -22,7 +23,7 @@ const verificationOf = (doc, hash) => ({
   sealedHash: doc.originalHash,
 });
 
-router.post('/cases/:id/documents', upload.single('file'), h(async (req, res) => {
+router.post('/cases/:id/documents', requireInvestigator, upload.single('file'), h(async (req, res) => {
   const ws = req.workspaceId;
   const caseId = intParam(req.params.id);
   const c = caseId

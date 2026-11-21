@@ -1,6 +1,7 @@
 const express = require('express');
 const { supabase, run, logAudit, mapEvidence } = require('../db');
 const { getActor, h, intParam } = require('../util');
+const { requireInvestigator } = require('../auth');
 
 const router = express.Router();
 
@@ -18,7 +19,7 @@ router.get('/cases/:id/evidence', h(async (req, res) => {
   res.json({ evidence: rows.map(mapEvidence) });
 }));
 
-router.post('/cases/:id/evidence', h(async (req, res) => {
+router.post('/cases/:id/evidence', requireInvestigator, h(async (req, res) => {
   const ws = req.workspaceId;
   const caseId = intParam(req.params.id);
   const c = caseId
@@ -89,7 +90,7 @@ router.get('/evidence/:id', h(async (req, res) => {
   res.json({ evidence: mapEvidence(item) });
 }));
 
-router.post('/evidence/:id/transfer', h(async (req, res) => {
+router.post('/evidence/:id/transfer', requireInvestigator, h(async (req, res) => {
   const ws = req.workspaceId;
   const item = await findEvidence(ws, intParam(req.params.id));
   if (!item) return res.status(404).json({ error: 'Evidence item not found' });

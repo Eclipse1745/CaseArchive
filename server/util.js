@@ -1,8 +1,6 @@
+// Set by requireAccess from the access token. Never read from request headers.
 function getActor(req) {
-  return {
-    role: req.headers['x-actor-role'] || 'Investigator',
-    name: req.headers['x-actor-name'] || 'System User',
-  };
+  return req.actor;
 }
 
 // Express 4 does not catch rejected promises, so wrap every async handler.

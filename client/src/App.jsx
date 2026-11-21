@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { api } from './api.js';
+import { api, getToken, saveOwnerToken, clearToken } from './api.js';
 import { ROLES } from './constants.js';
 import LoginScreen from './components/LoginScreen.jsx';
 import CaseSidebar from './components/CaseSidebar.jsx';
@@ -7,20 +7,12 @@ import CaseView from './components/CaseView.jsx';
 import NewCaseModal from './components/NewCaseModal.jsx';
 import Toast from './components/Toast.jsx';
 import AboutPanel from './components/AboutPanel.jsx';
-
-const IDENTITY_KEY = 'custodychain.identity';
-
-function loadIdentity() {
-  try {
-    const raw = localStorage.getItem(IDENTITY_KEY);
-    return raw ? JSON.parse(raw) : null;
-  } catch (e) {
-    return null;
-  }
-}
+import InviteModal from './components/InviteModal.jsx';
 
 export default function App() {
-  const [identity, setIdentity] = useState(loadIdentity);
+  const [identity, setIdentity] = useState(null);
+  const [authLoading, setAuthLoading] = useState(Boolean(getToken()));
+  const [inviteOpen, setInviteOpen] = useState(false);
   const [cases, setCases] = useState([]);
   const [selectedCaseId, setSelectedCaseId] = useState(null);
   const [caseDetail, setCaseDetail] = useState(null);
@@ -30,7 +22,6 @@ export default function App() {
   const [toast, setToast] = useState(null);
   const [aboutOpen, setAboutOpen] = useState(false);
   const [newCaseOpen, setNewCaseOpen] = useState(false);
-  const [resetting, setResetting] = useState(false);
 
   const actor = identity
     ? { ...ROLES.find((r) => r.key === identity.roleKey), name: identity.name }
@@ -75,7 +66,24 @@ export default function App() {
     [showToast]
   );
 
-  // Only start fetching once someone has "logged in".
+  // On load, ask the server who this token belongs to (name and role are decided there, not here).
+  useEffect(() => {
+    if (!getToken()) return;
+    api
+      .getMe()
+      .then((me) => setIdentity({ name: me.name, roleKey: me.role }))
+      .catch(() => {})
+      .finally(() => setAuthLoading(false));
+  }, []);
+
+  // An expired or revoked token comes back as a 401: return to the sign-in screen.
+  useEffect(() => {
+    const onSignedOut = () => window.location.reload();
+    window.addEventListener('casearchive:signed-out', onSignedOut);
+    return () => window.removeEventListener('casearchive:signed-out', onSignedOut);
+  }, []);
+
+  // Only start fetching once someone has signed in.
   useEffect(() => {
     if (!identity) return;
     loadCases().then((list) => {
@@ -92,17 +100,21 @@ export default function App() {
     await Promise.all([loadCases(), loadCaseDetail(selectedCaseId)]);
   }, [loadCases, loadCaseDetail, selectedCaseId]);
 
-  const handleLogin = (newIdentity) => {
-    localStorage.setItem(IDENTITY_KEY, JSON.stringify(newIdentity));
-    setIdentity(newIdentity);
+  const handleStart = async (name) => {
+    const session = await api.startSession(name);
+    saveOwnerToken(session.token);
+    setIdentity({ name: session.name, roleKey: session.role });
   };
 
-  const handleSwitchUser = () => {
-    localStorage.removeItem(IDENTITY_KEY);
-    setIdentity(null);
-    setSelectedCaseId(null);
-    setCaseDetail(null);
-    setCases([]);
+  const handleSignOut = () => {
+    if (
+      actor.canCreateCase &&
+      !window.confirm('Sign out? You can only get back into this workspace with your workspace link (see Invite).')
+    ) {
+      return;
+    }
+    clearToken();
+    window.location.reload();
   };
 
   const handleCaseCreated = async (newCaseId) => {
@@ -110,23 +122,12 @@ export default function App() {
     setSelectedCaseId(newCaseId);
   };
 
-  const handleReset = async () => {
-    setResetting(true);
-    try {
-      await api.resetEnvironment();
-      setSelectedCaseId(null);
-      setCaseDetail(null);
-      await loadCases();
-      showToast('Environment reset — all cases, documents, and evidence cleared.', 'success');
-    } catch (e) {
-      showToast(e.message, 'error');
-    } finally {
-      setResetting(false);
-    }
-  };
+  if (authLoading) {
+    return <div className="login-screen"><p className="muted">Loading…</p></div>;
+  }
 
   if (!identity) {
-    return <LoginScreen onLogin={handleLogin} />;
+    return <LoginScreen onStart={handleStart} />;
   }
 
   return (
@@ -147,11 +148,13 @@ export default function App() {
             <span className="identity-pill__name">{identity.name}</span>
             <span className="identity-pill__role">{actor.label}</span>
           </div>
-          <button className="btn btn--outline" onClick={handleSwitchUser}>
-            Switch User
-          </button>
-          <button className="btn btn--outline" onClick={handleReset} disabled={resetting}>
-            {resetting ? 'Resetting…' : 'Reset Environment'}
+          {actor.canCreateCase && (
+            <button className="btn btn--outline" onClick={() => setInviteOpen(true)}>
+              Invite
+            </button>
+          )}
+          <button className="btn btn--outline" onClick={handleSignOut}>
+            Sign Out
           </button>
         </div>
       </header>
@@ -179,6 +182,7 @@ export default function App() {
 
       {toast && <Toast toast={toast} onDone={() => setToast(null)} />}
       {aboutOpen && <AboutPanel onClose={() => setAboutOpen(false)} />}
+      {inviteOpen && <InviteModal onClose={() => setInviteOpen(false)} onToast={showToast} />}
       {newCaseOpen && (
         <NewCaseModal
           actor={actor}

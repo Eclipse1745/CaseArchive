@@ -1,8 +1,29 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { api } from '../api.js';
 
 export default function DocPreview({ doc, detail }) {
   const fileType = detail?.document?.fileType;
+  const [src, setSrc] = useState(null);
+
+  useEffect(() => {
+    if (fileType !== 'pdf' && fileType !== 'image') return undefined;
+    let cancelled = false;
+    let objectUrl = null;
+    api
+      .fetchFileUrl(doc.id)
+      .then((u) => {
+        if (cancelled) URL.revokeObjectURL(u);
+        else {
+          objectUrl = u;
+          setSrc(u);
+        }
+      })
+      .catch(() => setSrc(null));
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [doc.id, fileType]);
 
   if (fileType === 'text') {
     return (
@@ -15,7 +36,7 @@ export default function DocPreview({ doc, detail }) {
   if (fileType === 'pdf') {
     return (
       <div className="doc-viewer doc-viewer--pdf">
-        <iframe src={api.viewUrl(doc.id)} title={doc.title} />
+        {src ? <iframe src={src} title={doc.title} /> : <p className="muted">Loading preview…</p>}
       </div>
     );
   }
@@ -23,7 +44,7 @@ export default function DocPreview({ doc, detail }) {
   if (fileType === 'image') {
     return (
       <div className="doc-viewer doc-viewer--image">
-        <img src={api.viewUrl(doc.id)} alt={doc.title} />
+        {src ? <img src={src} alt={doc.title} /> : <p className="muted">Loading preview…</p>}
       </div>
     );
   }

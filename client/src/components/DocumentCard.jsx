@@ -93,9 +93,15 @@ export default function DocumentCard({ doc, actor, expanded, onToggle, onChanged
               {detail.insights && (
                 <div className="insights">
                   <div className="insights__title">
-                    Document insights <span className="insights__tag">rule-based, offline</span>
+                    Document insights <span className="insights__tag">pattern-based, offline</span>
                   </div>
                   <div className="insights__chips">
+                    {(detail.insights.legalSections || []).map((x) => (
+                      <span className="chip chip--section" key={x}>{x}</span>
+                    ))}
+                    {(detail.insights.parties || []).map((p) => (
+                      <span className="chip chip--party" key={p.role + p.name}>{p.role}: {p.name}</span>
+                    ))}
                     {detail.insights.dates.map((d) => (
                       <span className="chip chip--date" key={d}>{d}</span>
                     ))}
@@ -105,7 +111,9 @@ export default function DocumentCard({ doc, actor, expanded, onToggle, onChanged
                     {detail.insights.flaggedKeywords.map((k) => (
                       <span className="chip chip--keyword" key={k}>{k}</span>
                     ))}
-                    {detail.insights.dates.length === 0 &&
+                    {(detail.insights.legalSections || []).length === 0 &&
+                      (detail.insights.parties || []).length === 0 &&
+                      detail.insights.dates.length === 0 &&
                       detail.insights.likelyNames.length === 0 &&
                       detail.insights.flaggedKeywords.length === 0 && (
                         <span className="muted">No patterns detected.</span>
@@ -122,9 +130,12 @@ export default function DocumentCard({ doc, actor, expanded, onToggle, onChanged
                 >
                   Verify Integrity
                 </button>
-                <a className="btn btn--outline btn--sm" href={api.downloadUrl(doc.id)}>
+                <button
+                  className="btn btn--outline btn--sm"
+                  onClick={() => api.downloadFile(doc.id).catch((e) => onToast(e.message, 'error'))}
+                >
                   Download
-                </a>
+                </button>
               </div>
             </>
           )}

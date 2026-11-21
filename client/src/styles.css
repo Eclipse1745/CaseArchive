@@ -822,3 +822,45 @@ code, pre { font-family: var(--font-mono); }
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
 }
+
+/* ---- sharing, read-only review, tools, search ---- */
+.case-view__tools { display: flex; gap: 10px; flex-wrap: wrap; margin: 4px 0 14px; }
+.readonly-banner {
+  border: 1px solid var(--brass, #b08d57);
+  border-left-width: 4px;
+  background: rgba(176, 141, 87, 0.1);
+  padding: 10px 14px;
+  border-radius: 6px;
+  margin-bottom: 12px;
+  font-size: 0.85rem;
+}
+.evidence-search { display: flex; align-items: center; gap: 12px; margin: 0 0 12px; }
+.evidence-search input {
+  flex: 1; max-width: 420px; padding: 8px 10px; border-radius: 6px;
+  border: 1px solid var(--line, #3a3a3a); background: transparent; color: inherit; font: inherit;
+}
+.invite-result { display: flex; gap: 8px; margin: 14px 0 4px; }
+.invite-result input {
+  flex: 1; padding: 8px 10px; border-radius: 6px; font: inherit; font-size: 0.78rem;
+  border: 1px solid var(--line, #3a3a3a); background: transparent; color: inherit;
+}
+.chip--section, .chip--party { background: rgba(176, 141, 87, 0.18); }
+
+/* ---- printable case report ---- */
+.print-report { display: none; }
+@media print {
+  body > *:not(.print-report) { display: none !important; }
+  body { background: #fff !important; }
+  .print-report {
+    display: block; color: #000; background: #fff; font: 12px/1.45 Georgia, 'Times New Roman', serif; padding: 8px;
+  }
+  .print-report h1 { font-size: 20px; margin: 0 0 6px; }
+  .print-report h2 { font-size: 14px; margin: 18px 0 6px; border-bottom: 1px solid #000; padding-bottom: 2px; }
+  .print-report table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  .print-report th, .print-report td { border: 1px solid #888; padding: 3px 5px; text-align: left; vertical-align: top; }
+  .print-hash { font-family: 'Courier New', monospace; font-size: 9px; word-break: break-all; }
+  .print-ok { color: #1a6b2b; }
+  .print-bad { color: #b00020; }
+  .print-evidence { margin-bottom: 8px; page-break-inside: avoid; }
+  .print-report__meta { font-size: 10px; color: #444; }
+}

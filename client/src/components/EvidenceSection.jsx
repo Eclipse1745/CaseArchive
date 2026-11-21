@@ -8,6 +8,7 @@ export default function EvidenceSection({ caseId, actor, onToast, onChanged }) {
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState(null);
   const [logOpen, setLogOpen] = useState(false);
+  const [query, setQuery] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -30,6 +31,16 @@ export default function EvidenceSection({ caseId, actor, onToast, onChanged }) {
     if (onChanged) await onChanged();
   }, [load, onChanged]);
 
+  const q = query.trim().toLowerCase();
+  const visible = q
+    ? items.filter((i) =>
+        [i.itemType, i.currentCustodian, i.evidenceNumber, i.description, i.status]
+          .join(' ')
+          .toLowerCase()
+          .includes(q)
+      )
+    : items;
+
   return (
     <div className="evidence-section">
       <div className="evidence-section__header">
@@ -43,6 +54,18 @@ export default function EvidenceSection({ caseId, actor, onToast, onChanged }) {
         )}
       </div>
 
+      {items.length > 0 && (
+        <div className="evidence-search">
+          <input
+            type="text"
+            placeholder="Search evidence by type, custodian, number or status…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+          {q && <span className="muted">{visible.length} of {items.length} shown</span>}
+        </div>
+      )}
+
       {loading && <p className="muted">Loading evidence…</p>}
 
       {!loading && items.length === 0 && (
@@ -54,8 +77,12 @@ export default function EvidenceSection({ caseId, actor, onToast, onChanged }) {
         </div>
       )}
 
+      {!loading && items.length > 0 && visible.length === 0 && (
+        <p className="muted">No evidence matches "{query}".</p>
+      )}
+
       <div className="doc-list">
-        {items.map((item) => (
+        {visible.map((item) => (
           <EvidenceItemCard
             key={item.id}
             item={item}

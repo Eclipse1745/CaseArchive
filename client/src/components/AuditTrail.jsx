@@ -2,6 +2,9 @@ import React from 'react';
 
 const ACTION_LABEL = {
   CASE_CREATED: 'Case Filed',
+  CASE_UPDATED: 'Case Edited',
+  CASE_VERIFIED_PASS: 'Case Verify · Pass',
+  CASE_VERIFIED_FAIL: 'Case Verify · Fail',
   DOCUMENT_SEALED: 'Sealed',
   DOCUMENT_UPLOADED: 'Uploaded',
   DOCUMENT_DOWNLOADED: 'Downloaded',
@@ -15,6 +18,9 @@ const ACTION_LABEL = {
 
 const ACTION_CLASS = {
   CASE_CREATED: 'tag--brass',
+  CASE_UPDATED: 'tag--amber',
+  CASE_VERIFIED_PASS: 'tag--green',
+  CASE_VERIFIED_FAIL: 'tag--red',
   DOCUMENT_SEALED: 'tag--brass',
   DOCUMENT_UPLOADED: 'tag--brass',
   DOCUMENT_DOWNLOADED: 'tag--neutral',

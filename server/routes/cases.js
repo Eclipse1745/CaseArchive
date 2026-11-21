@@ -3,8 +3,11 @@ const { supabase, run, logAudit, mapCase, mapDoc } = require('../db');
 const { verifyChain } = require('../hashChain');
 const files = require('../files');
 const { getActor, h, intParam } = require('../util');
+const { requireInvestigator } = require('../auth');
 
 const router = express.Router();
+
+const CASE_STATUSES = ['Under Investigation', 'Charge Sheet Filed', 'In Court', 'Closed'];
 
 // Builds list summaries with a handful of queries instead of several per case.
 async function summarize(ws, caseRows) {
@@ -37,7 +40,7 @@ router.get('/', h(async (req, res) => {
   res.json({ cases: await summarize(req.workspaceId, rows) });
 }));
 
-router.post('/', h(async (req, res) => {
+router.post('/', requireInvestigator, h(async (req, res) => {
   const { caseNumber, title, description, status } = req.body || {};
   if (typeof caseNumber !== 'string' || !caseNumber.trim() || typeof title !== 'string' || !title.trim()) {
     return res.status(400).json({ error: 'Case number and title are required.' });
@@ -106,6 +109,77 @@ router.get('/:id', h(async (req, res) => {
 
   const [summary] = await summarize(ws, [c]);
   res.json({ case: summary, documents, chain: { chainIntact } });
+}));
+
+router.patch('/:id', requireInvestigator, h(async (req, res) => {
+  const ws = req.workspaceId;
+  const caseId = intParam(req.params.id);
+  const c = caseId
+    ? await run(supabase.from('cases').select('*').eq('workspace_id', ws).eq('id', caseId).maybeSingle())
+    : null;
+  if (!c) return res.status(404).json({ error: 'Case not found' });
+
+  const { status, description } = req.body || {};
+  if (status !== undefined && !CASE_STATUSES.includes(status)) {
+    return res.status(400).json({ error: 'Unknown case status.' });
+  }
+
+  const update = {};
+  const changes = [];
+  if (typeof status === 'string' && status !== c.status) {
+    update.status = status;
+    changes.push(`status "${c.status}" -> "${status}"`);
+  }
+  if (typeof description === 'string' && description.trim() !== c.description) {
+    update.description = description.trim();
+    changes.push('description updated');
+  }
+
+  let row = c;
+  if (changes.length) {
+    row = await run(
+      supabase.from('cases').update(update).eq('workspace_id', ws).eq('id', caseId).select().single()
+    );
+    await logAudit(ws, {
+      caseId,
+      actor: getActor(req),
+      action: 'CASE_UPDATED',
+      details: `Case ${row.case_number} edited: ${changes.join('; ')}.`,
+    });
+  }
+  const [summary] = await summarize(ws, [row]);
+  res.json({ case: summary });
+}));
+
+// One click: re-hash every document in the case and check the whole chain. Logged as ONE audit entry.
+router.post('/:id/verify-all', h(async (req, res) => {
+  const ws = req.workspaceId;
+  const caseId = intParam(req.params.id);
+  const c = caseId
+    ? await run(supabase.from('cases').select('*').eq('workspace_id', ws).eq('id', caseId).maybeSingle())
+    : null;
+  if (!c) return res.status(404).json({ error: 'Case not found' });
+
+  const docs = (
+    await run(supabase.from('documents').select('*').eq('workspace_id', ws).eq('case_id', caseId).order('chain_index'))
+  ).map(mapDoc);
+
+  const hashes = new Map();
+  await Promise.all(docs.map(async (d) => hashes.set(d.id, (await files.readWithHash(ws, d)).hash)));
+  const { chainIntact, blocks } = await verifyChain(docs, async (d) => hashes.get(d.id));
+  const failed = blocks.filter((b) => !b.contentVerified);
+  const ok = chainIntact && failed.length === 0;
+
+  await logAudit(ws, {
+    caseId,
+    actor: getActor(req),
+    action: ok ? 'CASE_VERIFIED_PASS' : 'CASE_VERIFIED_FAIL',
+    details: ok
+      ? `All ${docs.length} document(s) in ${c.case_number} verified; hash chain intact.`
+      : `${failed.length} of ${docs.length} document(s) in ${c.case_number} failed verification${chainIntact ? '' : '; hash chain broken'}.`,
+  });
+
+  res.json({ total: docs.length, failed: failed.length, chainIntact, failedDocumentIds: failed.map((b) => b.documentId) });
 }));
 
 module.exports = router;

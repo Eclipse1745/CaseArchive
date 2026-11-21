@@ -1,15 +1,22 @@
 import React, { useState } from 'react';
-import { ROLES } from '../constants.js';
 
-export default function LoginScreen({ onLogin, initialName }) {
-  const [name, setName] = useState(initialName || '');
-  const [roleKey, setRoleKey] = useState(ROLES[0].key);
+export default function LoginScreen({ onStart }) {
+  const [name, setName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     const trimmed = name.trim();
     if (!trimmed) return;
-    onLogin({ name: trimmed, roleKey });
+    setBusy(true);
+    setError('');
+    try {
+      await onStart(trimmed);
+    } catch (err) {
+      setError(err.message);
+      setBusy(false);
+    }
   };
 
   return (
@@ -30,23 +37,19 @@ export default function LoginScreen({ onLogin, initialName }) {
               autoFocus
             />
           </label>
-          <label className="field">
-            <span>Role</span>
-            <select value={roleKey} onChange={(e) => setRoleKey(e.target.value)}>
-              {ROLES.map((r) => (
-                <option key={r.key} value={r.key}>{r.label}</option>
-              ))}
-            </select>
-          </label>
-          <button type="submit" className="btn btn--primary login-card__submit" disabled={!name.trim()}>
-            Access System
+          {error && <p className="login-card__note" style={{ color: '#c0392b' }}>{error}</p>}
+          <button type="submit" className="btn btn--primary login-card__submit" disabled={busy || !name.trim()}>
+            {busy ? 'Starting…' : 'Start a Case Workspace'}
           </button>
         </form>
 
-      <p className="login-card__note">
-  Demo environment — hosted on a free server, so the first load may take up to a minute
-  while it wakes up. If something fails, please reload the page.
-</p>
+        <p className="login-card__note">
+          You start as the Investigator of your own workspace. To join someone else's workspace as a
+          Prosecutor or Court Clerk, open the invite link they sent you.
+        </p>
+        <p className="login-card__note">
+          If the system is slow to respond after a period of inactivity, please wait a moment and reload the page.
+        </p>
       </div>
     </div>
   );

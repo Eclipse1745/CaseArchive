@@ -20,7 +20,6 @@ export default function InviteModal({ onClose, onToast }) {
 
   const handleCreate = async (e) => {
     e.preventDefault();
-    if (!name.trim()) return;
     setBusy(true);
     try {
       const invite = await api.createInvite({ name: name.trim(), role });
@@ -45,8 +44,8 @@ export default function InviteModal({ onClose, onToast }) {
 
         <form onSubmit={handleCreate}>
           <label className="field">
-            <span>Who is this for? (only you see this)</span>
-            <input type="text" placeholder="e.g. Prosecutor, Sharma case" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+            <span>Note to self (optional, only you see this)</span>
+            <input type="text" placeholder="e.g. Prosecutor, Sharma case" value={name} onChange={(e) => setName(e.target.value)} />
           </label>
           <label className="field">
             <span>Role</span>
@@ -55,7 +54,7 @@ export default function InviteModal({ onClose, onToast }) {
               <option>Court Clerk</option>
             </select>
           </label>
-          <button type="submit" className="btn btn--primary" disabled={busy || !name.trim()}>
+          <button type="submit" className="btn btn--primary" disabled={busy}>
             {busy ? 'Creating…' : 'Create invite link'}
           </button>
         </form>

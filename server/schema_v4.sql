@@ -1,3 +1,6 @@
+-- Run once in the Supabase SQL editor (after schema_v3.sql), BEFORE deploying the new server.
+-- Invite links are now one-time. The link carries an invite CODE, which is not a login. Opening the link
+-- exchanges the code for a fresh session token (access_tokens) and marks the code as redeemed.
 create table if not exists invites (
   code          text primary key,
   workspace_id  text not null,
@@ -11,3 +14,5 @@ create table if not exists invites (
 create index if not exists invites_ws_idx on invites (workspace_id);
 alter table invites enable row level security;  -- no policies: only the server can touch it
 
+-- To cancel an unused invite: delete from invites where label = 'Prosecutor, Sharma case' and redeemed_at is null;
+-- To cut off someone who already joined: delete from access_tokens where label = 'Prosecutor, Sharma case';

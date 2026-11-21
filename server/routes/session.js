@@ -59,12 +59,13 @@ router.post('/claim', requireAccess, h(async (req, res) => {
 // The owner invites a read-only colleague into the SAME workspace. The role is fixed in the token; the owner's
 // typed name is only a private label, and the invitee types their own name when they accept (POST /claim).
 router.post('/invites', requireAccess, requireInvestigator, h(async (req, res) => {
-  const name = typeof req.body?.name === 'string' ? req.body.name.trim().slice(0, 80) : '';
   const role = req.body?.role;
-  if (!name) return res.status(400).json({ error: 'Enter a label for this invite.' });
   if (!['Prosecutor', 'Court Clerk'].includes(role)) {
     return res.status(400).json({ error: 'Invites can only be for a Prosecutor or a Court Clerk.' });
   }
+  // The label is optional and only for the owner; the invitee types their own name when they accept.
+  const typed = typeof req.body?.name === 'string' ? req.body.name.trim().slice(0, 80) : '';
+  const name = typed || `${role} invite`;
   // The link carries a one-time invite code, not a login token: /redeem swaps it for a session token.
   const code = newSecret();
   await run(

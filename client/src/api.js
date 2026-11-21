@@ -1,5 +1,6 @@
 const BASE = '/api';
 const TOKEN_KEY = 'casearchive.token';
+const PENDING_KEY = 'casearchive.pendingInvite'; // set until the invitee confirms on the welcome screen
 
 // An invite link looks like /?invite=TOKEN. It is kept per tab (sessionStorage), so opening an invite
 // never overwrites the owner's own saved session in the same browser.
@@ -8,13 +9,40 @@ const TOKEN_KEY = 'casearchive.token';
     const url = new URL(window.location.href);
     const invite = url.searchParams.get('invite');
     if (!invite) return;
-    sessionStorage.setItem(TOKEN_KEY, invite);
+    storeInvite(invite);
     url.searchParams.delete('invite');
     window.history.replaceState({}, '', url.pathname + url.search + url.hash);
   } catch (e) {
     // storage blocked: the person simply has to sign in normally
   }
 })();
+
+function storeInvite(token) {
+  sessionStorage.setItem(TOKEN_KEY, token);
+  sessionStorage.setItem(PENDING_KEY, '1');
+}
+
+export function hasPendingInvite() {
+  try {
+    return sessionStorage.getItem(PENDING_KEY) === '1';
+  } catch (e) {
+    return false;
+  }
+}
+
+export function confirmInvite() {
+  try {
+    sessionStorage.removeItem(PENDING_KEY);
+  } catch (e) {
+    // nothing to clear
+  }
+}
+
+// Used when someone pastes an invite on the sign-in screen: same as opening the link.
+export function joinWithInvite(token) {
+  storeInvite(token);
+  window.location.reload();
+}
 
 export function getToken() {
   try {
@@ -26,6 +54,12 @@ export function getToken() {
 
 export function saveOwnerToken(token) {
   localStorage.setItem(TOKEN_KEY, token);
+}
+
+// Forget an invite that was declined or is no longer valid.
+export function dropInvite() {
+  confirmInvite();
+  clearToken();
 }
 
 // Signs out whichever session this tab is using (an invite session first, otherwise the owner's).
@@ -78,6 +112,7 @@ async function fetchFile(url) {
 export const api = {
   startSession: (name) => request('POST', '/session/start', { body: { name } }),
   getMe: () => request('GET', '/session/me'),
+  claimName: (name) => request('POST', '/session/claim', { body: { name } }),
   createInvite: (payload) => request('POST', '/session/invites', { body: payload }),
 
   getCases: () => request('GET', '/cases'),

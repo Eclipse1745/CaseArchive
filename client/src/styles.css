@@ -114,6 +114,22 @@ code, pre { font-family: var(--font-mono); }
 
 .login-card__submit { width: 100%; justify-content: center; margin-top: 6px; }
 
+.login-card__heading { font-size: 0.95rem; font-weight: 600; margin: 0 0 4px; }
+
+.login-card__hint { margin: 0 0 14px; font-size: 0.85rem; line-height: 1.5; color: var(--ink-dim); }
+
+.login-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 22px 0;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-dim);
+}
+.login-divider::before, .login-divider::after { content: ''; flex: 1; border-top: 1px solid var(--border); }
+
 .login-card__note {
   margin: 18px 0 0;
   font-size: 0.76rem;
@@ -714,6 +730,8 @@ code, pre { font-family: var(--font-mono); }
 .audit-row__time { font-family: var(--font-mono); color: var(--ink-dim); font-size: 0.76rem; }
 .audit-row__actor { color: var(--ink); }
 .audit-row__actor em { color: var(--ink-dim); font-style: normal; font-size: 0.76rem; }
+.audit-row__note { display: block; color: var(--ink-dim); font-size: 0.72rem; }
+.audit-trail__caption { margin: 0 0 10px; color: var(--ink-dim); font-size: 0.78rem; }
 .audit-row__details { color: var(--ink-dim); }
 
 .tag {

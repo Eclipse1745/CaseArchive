@@ -96,12 +96,13 @@ export default function CaseReport({ caseDetail, auditEntries, actor, onDone, on
       ))}
 
       <h2>Audit trail</h2>
+      <p>Names are typed by each user and are not verified.</p>
       <table>
         <thead><tr><th>Time</th><th>Action</th><th>By</th><th>Details</th></tr></thead>
         <tbody>
           {auditEntries.map((a) => (
             <tr key={a.id}>
-              <td>{fmt(a.timestamp)}</td><td>{a.action}</td><td>{a.actorName} ({a.actorRole})</td><td>{a.details}</td>
+              <td>{fmt(a.timestamp)}</td><td>{a.action}</td><td>{a.actorName} ({a.actorRole}){a.actorNote ? ` · ${a.actorNote}` : ''}</td><td>{a.details}</td>
             </tr>
           ))}
         </tbody>

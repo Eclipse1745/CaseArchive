@@ -37,15 +37,15 @@ export default function InviteModal({ onClose, onToast }) {
       <div className="modal modal--wide" onClick={(e) => e.stopPropagation()}>
         <h2>Invite a colleague</h2>
         <p className="muted">
-          The link opens this workspace as read-only. Their name and role are fixed inside the link and
-          enforced by the server, so they cannot change either. Anyone holding the link gets that access,
-          so send it privately.
+          The link opens this workspace as read-only. The role is fixed inside the link and enforced by the
+          server. The first person to open it types their own name, which is then fixed and marked as not
+          verified in the records. Anyone holding the link gets that access, so send it privately.
         </p>
 
         <form onSubmit={handleCreate}>
           <label className="field">
-            <span>Their name</span>
-            <input type="text" placeholder="e.g. Adv. Meera Sharma" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+            <span>Who is this for? (only you see this)</span>
+            <input type="text" placeholder="e.g. Prosecutor, Sharma case" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
           </label>
           <label className="field">
             <span>Role</span>

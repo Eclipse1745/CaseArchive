@@ -38,6 +38,7 @@ export default function AuditTrail({ entries }) {
   }
   return (
     <div className="audit-trail">
+      <p className="audit-trail__caption">Names are typed by each user and are not verified.</p>
       {entries.map((e) => (
         <div className="audit-row" key={e.id}>
           <span className="audit-row__time">
@@ -48,7 +49,10 @@ export default function AuditTrail({ entries }) {
           <span className={`tag ${ACTION_CLASS[e.action] || 'tag--neutral'}`}>
             {ACTION_LABEL[e.action] || e.action}
           </span>
-          <span className="audit-row__actor">{e.actorName} <em>({e.actorRole})</em></span>
+          <span className="audit-row__actor">
+            {e.actorName} <em>({e.actorRole})</em>
+            {e.actorNote && <span className="audit-row__note">{e.actorNote}</span>}
+          </span>
           <span className="audit-row__details">{e.details}</span>
         </div>
       ))}

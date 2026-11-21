@@ -1,7 +1,9 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { api, getToken, saveOwnerToken, clearToken } from './api.js';
+import { api, getToken, saveOwnerToken, clearToken, hasPendingInvite, confirmInvite, dropInvite, joinWithInvite } from './api.js';
+import { inviteTokenFrom } from './invite.js';
 import { ROLES } from './constants.js';
 import LoginScreen from './components/LoginScreen.jsx';
+import InviteWelcome from './components/InviteWelcome.jsx';
 import CaseSidebar from './components/CaseSidebar.jsx';
 import CaseView from './components/CaseView.jsx';
 import NewCaseModal from './components/NewCaseModal.jsx';
@@ -12,6 +14,8 @@ import InviteModal from './components/InviteModal.jsx';
 export default function App() {
   const [identity, setIdentity] = useState(null);
   const [authLoading, setAuthLoading] = useState(Boolean(getToken()));
+  const [pendingInvite, setPendingInvite] = useState(hasPendingInvite);
+  const [inviteNotice, setInviteNotice] = useState('');
   const [inviteOpen, setInviteOpen] = useState(false);
   const [cases, setCases] = useState([]);
   const [selectedCaseId, setSelectedCaseId] = useState(null);
@@ -71,25 +75,39 @@ export default function App() {
     if (!getToken()) return;
     api
       .getMe()
-      .then((me) => setIdentity({ name: me.name, roleKey: me.role }))
+      .then((me) => {
+        setIdentity({ name: me.name, roleKey: me.role, claimed: me.claimed });
+        if (!me.claimed) setPendingInvite(true); // an invitee must type their own name first
+      })
       .catch(() => {})
       .finally(() => setAuthLoading(false));
   }, []);
 
   // An expired or revoked token comes back as a 401: return to the sign-in screen.
   useEffect(() => {
-    const onSignedOut = () => window.location.reload();
+    const onSignedOut = () => {
+      if (!getToken()) return; // a second 401 from the same dead session: already handled
+      if (hasPendingInvite()) {
+        // A dead invite link: say so on the sign-in screen instead of reloading in a loop.
+        dropInvite();
+        setPendingInvite(false);
+        setInviteNotice('That invite link is no longer valid. Ask the workspace owner for a new one.');
+        return;
+      }
+      clearToken(); // drop the dead token, otherwise the reload would hit the same 401 again
+      window.location.reload();
+    };
     window.addEventListener('casearchive:signed-out', onSignedOut);
     return () => window.removeEventListener('casearchive:signed-out', onSignedOut);
   }, []);
 
   // Only start fetching once someone has signed in.
   useEffect(() => {
-    if (!identity) return;
+    if (!identity || pendingInvite) return;
     loadCases().then((list) => {
       if (list.length > 0) setSelectedCaseId(list[0].id);
     });
-  }, [identity, loadCases]);
+  }, [identity, pendingInvite, loadCases]);
 
   useEffect(() => {
     if (selectedCaseId) loadCaseDetail(selectedCaseId);
@@ -104,6 +122,19 @@ export default function App() {
     const session = await api.startSession(name);
     saveOwnerToken(session.token);
     setIdentity({ name: session.name, roleKey: session.role });
+  };
+
+  const handleJoin = (text) => {
+    const token = inviteTokenFrom(text);
+    if (!token) throw new Error('That doesn’t look like an invite link. Paste the full link you were sent.');
+    joinWithInvite(token);
+  };
+
+  const handleClaim = async (typedName) => {
+    const me = await api.claimName(typedName);
+    setIdentity({ name: me.name, roleKey: me.role, claimed: true });
+    confirmInvite();
+    setPendingInvite(false);
   };
 
   const handleSignOut = () => {
@@ -126,8 +157,27 @@ export default function App() {
     return <main className="login-screen"><p className="muted">Loading…</p></main>;
   }
 
+  if (identity && pendingInvite) {
+    return (
+      <InviteWelcome
+        name={identity.name}
+        role={identity.roleKey}
+        claimed={identity.claimed}
+        onClaim={handleClaim}
+        onContinue={() => {
+          confirmInvite();
+          setPendingInvite(false);
+        }}
+        onDecline={() => {
+          dropInvite();
+          window.location.reload();
+        }}
+      />
+    );
+  }
+
   if (!identity) {
-    return <LoginScreen onStart={handleStart} />;
+    return <LoginScreen onStart={handleStart} onJoin={handleJoin} notice={inviteNotice} />;
   }
 
   return (

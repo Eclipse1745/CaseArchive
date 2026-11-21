@@ -20,7 +20,7 @@ export default function LoginScreen({ onStart }) {
   };
 
   return (
-    <div className="login-screen">
+    <main className="login-screen">
       <div className="login-card">
         <div className="login-card__mark">⛓</div>
         <h1>Case Archive</h1>
@@ -37,7 +37,7 @@ export default function LoginScreen({ onStart }) {
               autoFocus
             />
           </label>
-          {error && <p className="login-card__note" style={{ color: '#c0392b' }}>{error}</p>}
+          {error && <p className="login-card__note" style={{ color: '#e0675a' }}>{error}</p>}
           <button type="submit" className="btn btn--primary login-card__submit" disabled={busy || !name.trim()}>
             {busy ? 'Starting…' : 'Start a Case Workspace'}
           </button>
@@ -51,6 +51,6 @@ export default function LoginScreen({ onStart }) {
           If the system is slow to respond after a period of inactivity, please wait a moment and reload the page.
         </p>
       </div>
-    </div>
+    </main>
   );
 }

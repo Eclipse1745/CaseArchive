@@ -123,7 +123,7 @@ export default function App() {
   };
 
   if (authLoading) {
-    return <div className="login-screen"><p className="muted">Loading…</p></div>;
+    return <main className="login-screen"><p className="muted">Loading…</p></main>;
   }
 
   if (!identity) {

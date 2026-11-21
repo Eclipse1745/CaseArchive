@@ -14,7 +14,7 @@ function intParam(v) {
 // Names are typed by people and never checked, so records from invitees say so (and who invited them).
 function auditNote(actor) {
   if (actor.role === 'Investigator') return null;
-  return `${actor.invitedBy ? `invited by ${actor.invitedBy} · ` : ''}name not verified`;
+  return `${actor.invitedBy ? `invited by ${actor.invitedBy} · ` : ''}name and role not verified`;
 }
 
 // An invitee must confirm their own name before touching anything. Investigators are always confirmed.

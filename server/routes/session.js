@@ -7,6 +7,8 @@ const { h } = require('../util');
 const router = express.Router();
 
 const newSecret = () => crypto.randomBytes(24).toString('base64url');
+// Both are read-only, so letting the invitee pick between them gives them no extra power.
+const READ_ONLY_ROLES = ['Prosecutor', 'Court Clerk'];
 const INVITE_TTL_MS = 7 * 24 * 3600 * 1000; // an unused invite link expires after a week
 
 // Light abuse guard for the one public endpoint (anyone can start a workspace).
@@ -42,43 +44,37 @@ router.get('/me', requireAccess, (req, res) => {
   res.json({ name: req.claimed ? req.actor.name : null, role: req.actor.role, claimed: req.claimed });
 });
 
-// The invitee types their own name, once. It is not verified, and records say so.
+// The invitee types their own name and picks their own role, once. Neither is verified, and records say so.
 router.post('/claim', requireAccess, h(async (req, res) => {
   const name = typeof req.body?.name === 'string' ? req.body.name.trim().slice(0, 80) : '';
   if (!name) return res.status(400).json({ error: 'Please enter your name.' });
+  const role = req.body?.role;
+  if (!READ_ONLY_ROLES.includes(role)) return res.status(400).json({ error: 'Choose Prosecutor or Court Clerk.' });
   const token = req.get('x-access-token');
   const rows = await run(
-    supabase.from('access_tokens').update({ name, claimed_at: new Date().toISOString() })
+    supabase.from('access_tokens').update({ name, role, claimed_at: new Date().toISOString() })
       .eq('token', token).neq('role', 'Investigator').is('claimed_at', null).select('token')
   );
   if (rows.length === 0) return res.status(409).json({ error: 'The name for this invite is already confirmed.' });
   forget(token);
-  res.json({ name, role: req.actor.role, claimed: true });
+  res.json({ name, role, claimed: true });
 }));
 
-// The owner invites a read-only colleague into the SAME workspace. The role is fixed in the token; the owner's
-// typed name is only a private label, and the invitee types their own name when they accept (POST /claim).
+// The owner just creates a link. The invitee types their own name and picks their own role (POST /claim).
+// The role stored here is only a read-only placeholder until then: unclaimed tokens can do nothing anyway.
 router.post('/invites', requireAccess, requireInvestigator, h(async (req, res) => {
-  const role = req.body?.role;
-  if (!['Prosecutor', 'Court Clerk'].includes(role)) {
-    return res.status(400).json({ error: 'Invites can only be for a Prosecutor or a Court Clerk.' });
-  }
-  // The label is optional and only for the owner; the invitee types their own name when they accept.
-  const typed = typeof req.body?.name === 'string' ? req.body.name.trim().slice(0, 80) : '';
-  const name = typed || `${role} invite`;
-  // The link carries a one-time invite code, not a login token: /redeem swaps it for a session token.
   const code = newSecret();
   await run(
     supabase.from('invites').insert({
       code,
       workspace_id: req.workspaceId,
-      role,
-      label: name,
+      role: READ_ONLY_ROLES[0],
+      label: 'Invite',
       invited_by: req.actor.name,
       expires_at: new Date(Date.now() + INVITE_TTL_MS).toISOString(),
     })
   );
-  res.status(201).json({ token: code, name, role });
+  res.status(201).json({ token: code });
 }));
 
 // Opening an invite link. Public (the invitee has no session yet). The single UPDATE only matches an unused,

@@ -2,12 +2,11 @@ import React, { useState } from 'react';
 import { api, getToken } from '../api.js';
 
 export default function InviteModal({ onClose, onToast }) {
-  const [name, setName] = useState('');
-  const [role, setRole] = useState('Prosecutor');
   const [busy, setBusy] = useState(false);
   const [link, setLink] = useState('');
 
-  const linkFor = (token) => `${window.location.origin}/?invite=${token}`;
+  const linkFor = (code) => `${window.location.origin}/?invite=${code}`;
+  const restoreLinkFor = (token) => `${window.location.origin}/?restore=${token}`;
 
   const copy = async (text, message) => {
     try {
@@ -22,7 +21,7 @@ export default function InviteModal({ onClose, onToast }) {
     e.preventDefault();
     setBusy(true);
     try {
-      const invite = await api.createInvite({ name: name.trim(), role });
+      const invite = await api.createInvite();
       setLink(linkFor(invite.token));
     } catch (err) {
       onToast(err.message, 'error');
@@ -36,24 +35,13 @@ export default function InviteModal({ onClose, onToast }) {
       <div className="modal modal--wide" onClick={(e) => e.stopPropagation()}>
         <h2>Invite a colleague</h2>
         <p className="muted">
-          The link opens this workspace as read-only. The role is fixed inside the link and enforced by the
-          server. The link works only once: the first person to open it gets in, types their own name (fixed
-          afterwards and marked as not verified in the records), and the link then stops working for everyone
-          else. An unused link expires after 7 days. Send it privately.
+          The link opens this workspace as read-only. It works only once: the first person to open it types
+          their own name and picks Prosecutor or Court Clerk (both read-only; neither is verified, and the
+          records say so), and the link then stops working for everyone else. An unused link expires after
+          7 days. Send it privately.
         </p>
 
         <form onSubmit={handleCreate}>
-          <label className="field">
-            <span>Note to self (optional, only you see this)</span>
-            <input type="text" placeholder="e.g. Prosecutor, Sharma case" value={name} onChange={(e) => setName(e.target.value)} />
-          </label>
-          <label className="field">
-            <span>Role</span>
-            <select value={role} onChange={(e) => setRole(e.target.value)}>
-              <option>Prosecutor</option>
-              <option>Court Clerk</option>
-            </select>
-          </label>
           <button type="submit" className="btn btn--primary" disabled={busy}>
             {busy ? 'Creating…' : 'Create invite link'}
           </button>
@@ -73,7 +61,7 @@ export default function InviteModal({ onClose, onToast }) {
           Save this somewhere private. It is the only way back into this workspace if you clear your
           browser data.
         </p>
-        <button className="btn btn--outline btn--sm" onClick={() => copy(linkFor(getToken()), 'Your workspace link copied.')}>
+        <button className="btn btn--outline btn--sm" onClick={() => copy(restoreLinkFor(getToken()), 'Your workspace link copied.')}>
           Copy my workspace link
         </button>
 

@@ -5,6 +5,7 @@ const errorStyle = { color: '#e0675a' };
 
 export default function InviteWelcome({ name, role, claimed, onContinue, onClaim, onDecline }) {
   const [typed, setTyped] = useState('');
+  const [chosen, setChosen] = useState('Prosecutor');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const readOnly = !ROLES.find((r) => r.key === role)?.canUpload;
@@ -45,7 +46,7 @@ export default function InviteWelcome({ name, role, claimed, onContinue, onClaim
     setBusy(true);
     setError('');
     try {
-      await onClaim(typed.trim());
+      await onClaim(typed.trim(), chosen);
     } catch (err) {
       setError(err.message);
       setBusy(false);
@@ -58,21 +59,29 @@ export default function InviteWelcome({ name, role, claimed, onContinue, onClaim
         <div className="login-card__mark">⛓</div>
         <h1>You’ve been invited</h1>
         <p className="login-card__hint">
-          You’re joining a Case Archive workspace with the role of <strong>{role}</strong>.
+          You’re joining a Case Archive workspace. Both roles below are read-only: you can view cases,
+          documents, evidence and the audit trail, but you can’t change anything.
         </p>
-        {readOnlyNote}
         <form onSubmit={handleSubmit}>
           <label className="field">
             <span>Your full name</span>
             <input type="text" value={typed} onChange={(e) => setTyped(e.target.value)} autoFocus />
           </label>
+          <label className="field">
+            <span>Your role</span>
+            <select value={chosen} onChange={(e) => setChosen(e.target.value)}>
+              {ROLES.filter((r) => !r.canUpload).map((r) => (
+                <option key={r.key} value={r.key}>{r.label}</option>
+              ))}
+            </select>
+          </label>
           <p className="login-card__hint">
-            This is how you’ll appear in the workspace records. You type it yourself and it isn’t
-            verified, so please use your real name. It can’t be changed afterwards.
+            This is how you’ll appear in the workspace records. You choose it yourself and it isn’t
+            verified, so please be accurate. Neither can be changed afterwards.
           </p>
           {error && <p className="login-card__hint" style={errorStyle} role="alert">{error}</p>}
           <button type="submit" className="btn btn--primary login-card__submit" disabled={busy || !typed.trim()}>
-            {busy ? 'Joining…' : `Join as ${role}`}
+            {busy ? 'Joining…' : `Join as ${chosen}`}
           </button>
         </form>
         <button className="btn btn--ghost login-card__submit" onClick={onDecline}>

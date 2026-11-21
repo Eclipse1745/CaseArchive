@@ -70,39 +70,51 @@ export default function App() {
     [showToast]
   );
 
-  // On load, ask the server who this token belongs to (name and role are decided there, not here).
+  // Ask the server who this token belongs to (name and role are decided there, not here).
   // If an invite link was opened, first trade its one-time code for a session token.
-  useEffect(() => {
-    redeemPendingInvite()
-      .catch((e) => setInviteNotice(e.message)) // already used, expired, or never existed
-      .then(() => {
-        if (!getToken()) return;
-        return api.getMe().then((me) => {
-          setIdentity({ name: me.name, roleKey: me.role, claimed: me.claimed });
-          if (!me.claimed) setPendingInvite(true); // an invitee must type their own name first
-        });
-      })
-      .catch(() => {})
-      .finally(() => setAuthLoading(false));
-  }, []);
+  const bootstrap = useCallback(
+    () =>
+      redeemPendingInvite()
+        .catch((e) => setInviteNotice(e.message)) // already used, expired, or never existed
+        .then(() => {
+          if (!getToken()) return;
+          return api.getMe().then((me) => {
+            setIdentity({ name: me.name, roleKey: me.role, claimed: me.claimed });
+            if (!me.claimed) setPendingInvite(true); // an invitee must type their own name first
+          });
+        })
+        .catch(() => {})
+        .finally(() => setAuthLoading(false)),
+    []
+  );
 
-  // An expired or revoked token comes back as a 401: return to the sign-in screen.
+  useEffect(() => {
+    bootstrap();
+  }, [bootstrap]);
+
+  // A 401 means this token is dead. Drop it and fall back to the sign-in screen WITHOUT reloading the page:
+  // a reload is what turned a dead token into an endless reload loop. Every pass removes one stored token,
+  // so this always ends.
   useEffect(() => {
     const onSignedOut = () => {
-      if (!getToken()) return; // a second 401 from the same dead session: already handled
-      if (hasPendingInvite()) {
-        // A dead invite link: say so on the sign-in screen instead of reloading in a loop.
-        dropInvite();
-        setPendingInvite(false);
-        setInviteNotice('That invite link is no longer valid. Ask the workspace owner for a new one.');
-        return;
+      if (!getToken()) return; // already handled
+      const wasInvite = hasPendingInvite();
+      if (wasInvite) dropInvite();
+      else clearToken();
+      setIdentity(null);
+      setPendingInvite(false);
+      setCases([]);
+      setSelectedCaseId(null);
+      setCaseDetail(null);
+      setInviteNotice(wasInvite ? 'That invite link is no longer valid. Ask the workspace owner for a new one.' : 'Your session ended. Please sign in again.');
+      if (getToken()) {
+        setAuthLoading(true);
+        bootstrap(); // a second saved session (e.g. the owner's) is still in this browser: try it
       }
-      clearToken(); // drop the dead token, otherwise the reload would hit the same 401 again
-      window.location.reload();
     };
     window.addEventListener('casearchive:signed-out', onSignedOut);
     return () => window.removeEventListener('casearchive:signed-out', onSignedOut);
-  }, []);
+  }, [bootstrap]);
 
   // Only start fetching once someone has signed in.
   useEffect(() => {
@@ -133,8 +145,8 @@ export default function App() {
     joinWithInvite(token);
   };
 
-  const handleClaim = async (typedName) => {
-    const me = await api.claimName(typedName);
+  const handleClaim = async (typedName, role) => {
+    const me = await api.claimName(typedName, role);
     setIdentity({ name: me.name, roleKey: me.role, claimed: true });
     confirmInvite();
     setPendingInvite(false);

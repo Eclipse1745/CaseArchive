@@ -10,9 +10,12 @@ const CODE_KEY = 'casearchive.inviteCode'; // one-time invite code, only held un
   try {
     const url = new URL(window.location.href);
     const invite = url.searchParams.get('invite');
-    if (!invite) return;
-    storeInvite(invite);
+    const restore = url.searchParams.get('restore'); // the owner's own saved link: /?restore=SESSION_TOKEN
+    if (!invite && !restore) return;
+    if (invite) storeInvite(invite);
+    if (restore) localStorage.setItem(TOKEN_KEY, restore);
     url.searchParams.delete('invite');
+    url.searchParams.delete('restore');
     window.history.replaceState({}, '', url.pathname + url.search + url.hash);
   } catch (e) {
     // storage blocked: the person simply has to sign in normally
@@ -51,7 +54,9 @@ export function redeemPendingInvite() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code }),
       });
-      if (!res.ok) throw await errorFrom(res);
+      // 401/404 here means the server has no /redeem route yet (not redeployed), not that the person was signed out.
+      if (res.status === 401 || res.status === 404) throw new Error('The server could not open this invite yet. It may still be updating: wait a minute and open the link again.');
+      if (!res.ok) throw await errorFrom(res, true);
       const { token } = await res.json();
       sessionStorage.setItem(TOKEN_KEY, token);
       sessionStorage.setItem(PENDING_KEY, '1');
@@ -118,7 +123,8 @@ function authHeaders() {
   return token ? { 'x-access-token': token } : {};
 }
 
-async function errorFrom(res) {
+// quiet: a failure that must not be treated as "your session died" (e.g. a bad invite link).
+async function errorFrom(res, quiet = false) {
   let message = `Request failed (${res.status})`;
   try {
     const data = await res.json();
@@ -126,7 +132,7 @@ async function errorFrom(res) {
   } catch (e) {
     // keep the default message
   }
-  if (res.status === 401) window.dispatchEvent(new Event('casearchive:signed-out'));
+  if (res.status === 401 && !quiet) window.dispatchEvent(new Event('casearchive:signed-out'));
   return new Error(message);
 }
 
@@ -153,7 +159,7 @@ async function fetchFile(url) {
 export const api = {
   startSession: (name) => request('POST', '/session/start', { body: { name } }),
   getMe: () => request('GET', '/session/me'),
-  claimName: (name) => request('POST', '/session/claim', { body: { name } }),
+  claimName: (name, role) => request('POST', '/session/claim', { body: { name, role } }),
   createInvite: (payload) => request('POST', '/session/invites', { body: payload }),
 
   getCases: () => request('GET', '/cases'),

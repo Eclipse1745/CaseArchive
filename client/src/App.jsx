@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { api, getToken, saveOwnerToken, clearToken, hasPendingInvite, confirmInvite, dropInvite, joinWithInvite } from './api.js';
+import { api, getToken, saveOwnerToken, clearToken, hasPendingInvite, hasInviteCode, redeemPendingInvite, confirmInvite, dropInvite, joinWithInvite } from './api.js';
 import { inviteTokenFrom } from './invite.js';
 import { ROLES } from './constants.js';
 import LoginScreen from './components/LoginScreen.jsx';
@@ -13,7 +13,7 @@ import InviteModal from './components/InviteModal.jsx';
 
 export default function App() {
   const [identity, setIdentity] = useState(null);
-  const [authLoading, setAuthLoading] = useState(Boolean(getToken()));
+  const [authLoading, setAuthLoading] = useState(Boolean(getToken()) || hasInviteCode());
   const [pendingInvite, setPendingInvite] = useState(hasPendingInvite);
   const [inviteNotice, setInviteNotice] = useState('');
   const [inviteOpen, setInviteOpen] = useState(false);
@@ -71,13 +71,16 @@ export default function App() {
   );
 
   // On load, ask the server who this token belongs to (name and role are decided there, not here).
+  // If an invite link was opened, first trade its one-time code for a session token.
   useEffect(() => {
-    if (!getToken()) return;
-    api
-      .getMe()
-      .then((me) => {
-        setIdentity({ name: me.name, roleKey: me.role, claimed: me.claimed });
-        if (!me.claimed) setPendingInvite(true); // an invitee must type their own name first
+    redeemPendingInvite()
+      .catch((e) => setInviteNotice(e.message)) // already used, expired, or never existed
+      .then(() => {
+        if (!getToken()) return;
+        return api.getMe().then((me) => {
+          setIdentity({ name: me.name, roleKey: me.role, claimed: me.claimed });
+          if (!me.claimed) setPendingInvite(true); // an invitee must type their own name first
+        });
       })
       .catch(() => {})
       .finally(() => setAuthLoading(false));

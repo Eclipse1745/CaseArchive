@@ -7,6 +7,7 @@ const { h } = require('../util');
 const router = express.Router();
 
 const newSecret = () => crypto.randomBytes(24).toString('base64url');
+const INVITE_TTL_MS = 7 * 24 * 3600 * 1000; // an unused invite link expires after a week
 
 // Light abuse guard for the one public endpoint (anyone can start a workspace).
 const hits = new Map();
@@ -64,9 +65,52 @@ router.post('/invites', requireAccess, requireInvestigator, h(async (req, res) =
   if (!['Prosecutor', 'Court Clerk'].includes(role)) {
     return res.status(400).json({ error: 'Invites can only be for a Prosecutor or a Court Clerk.' });
   }
+  // The link carries a one-time invite code, not a login token: /redeem swaps it for a session token.
+  const code = newSecret();
+  await run(
+    supabase.from('invites').insert({
+      code,
+      workspace_id: req.workspaceId,
+      role,
+      label: name,
+      invited_by: req.actor.name,
+      expires_at: new Date(Date.now() + INVITE_TTL_MS).toISOString(),
+    })
+  );
+  res.status(201).json({ token: code, name, role });
+}));
+
+// Opening an invite link. Public (the invitee has no session yet). The single UPDATE only matches an unused,
+// unexpired code, and Postgres applies it to one request only, so two people racing on the same link
+// cannot both get in.
+router.post('/redeem', h(async (req, res) => {
+  const code = typeof req.body?.code === 'string' ? req.body.code.trim() : '';
+  if (!code || code.length > 100) return res.status(400).json({ error: 'Missing invite code.' });
+
+  const now = new Date().toISOString();
+  const rows = await run(
+    supabase.from('invites').update({ redeemed_at: now })
+      .eq('code', code).is('redeemed_at', null).gt('expires_at', now)
+      .select('workspace_id, role, label, invited_by')
+  );
+  if (rows.length === 0) {
+    return res.status(410).json({ error: 'This invite link was already used or has expired. Ask the workspace owner for a new one.' });
+  }
+
+  const inv = rows[0];
   const token = newSecret();
-  await run(supabase.from('access_tokens').insert({ token, workspace_id: req.workspaceId, role, name, label: name, invited_by: req.actor.name }));
-  res.status(201).json({ token, name, role });
+  try {
+    await run(
+      supabase.from('access_tokens').insert({
+        token, workspace_id: inv.workspace_id, role: inv.role, name: inv.label, label: inv.label, invited_by: inv.invited_by,
+      })
+    );
+  } catch (err) {
+    // Do not burn the invite if we failed to issue the session.
+    await supabase.from('invites').update({ redeemed_at: null }).eq('code', code);
+    throw err;
+  }
+  res.json({ token, role: inv.role });
 }));
 
 module.exports = router;

@@ -38,8 +38,9 @@ export default function InviteModal({ onClose, onToast }) {
         <h2>Invite a colleague</h2>
         <p className="muted">
           The link opens this workspace as read-only. The role is fixed inside the link and enforced by the
-          server. The first person to open it types their own name, which is then fixed and marked as not
-          verified in the records. Anyone holding the link gets that access, so send it privately.
+          server. The link works only once: the first person to open it gets in, types their own name (fixed
+          afterwards and marked as not verified in the records), and the link then stops working for everyone
+          else. An unused link expires after 7 days. Send it privately.
         </p>
 
         <form onSubmit={handleCreate}>

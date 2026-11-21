@@ -1,9 +1,11 @@
 const BASE = '/api';
 const TOKEN_KEY = 'casearchive.token';
 const PENDING_KEY = 'casearchive.pendingInvite'; // set until the invitee confirms on the welcome screen
+const CODE_KEY = 'casearchive.inviteCode'; // one-time invite code, only held until it is redeemed
 
-// An invite link looks like /?invite=TOKEN. It is kept per tab (sessionStorage), so opening an invite
-// never overwrites the owner's own saved session in the same browser.
+// An invite link looks like /?invite=CODE. The code is NOT a login: redeemPendingInvite() trades it, once, for a
+// session token. It is kept per tab (sessionStorage), so opening an invite never overwrites the owner's own
+// saved session in the same browser.
 (function adoptInvite() {
   try {
     const url = new URL(window.location.href);
@@ -17,9 +19,48 @@ const PENDING_KEY = 'casearchive.pendingInvite'; // set until the invitee confir
   }
 })();
 
-function storeInvite(token) {
-  sessionStorage.setItem(TOKEN_KEY, token);
-  sessionStorage.setItem(PENDING_KEY, '1');
+function storeInvite(code) {
+  sessionStorage.setItem(CODE_KEY, code);
+}
+
+export function hasInviteCode() {
+  try {
+    return Boolean(sessionStorage.getItem(CODE_KEY));
+  } catch (e) {
+    return false;
+  }
+}
+
+// Redeems the pending invite code (if any) and stores the session token it returns. The code is single-use,
+// so this must run only once: the promise is cached because React StrictMode runs effects twice in dev.
+let redeeming = null;
+export function redeemPendingInvite() {
+  if (redeeming) return redeeming;
+  let code = null;
+  try {
+    code = sessionStorage.getItem(CODE_KEY);
+  } catch (e) {
+    // storage blocked
+  }
+  if (!code) return Promise.resolve(false);
+
+  redeeming = (async () => {
+    try {
+      const res = await fetch(BASE + '/session/redeem', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code }),
+      });
+      if (!res.ok) throw await errorFrom(res);
+      const { token } = await res.json();
+      sessionStorage.setItem(TOKEN_KEY, token);
+      sessionStorage.setItem(PENDING_KEY, '1');
+      return true;
+    } finally {
+      sessionStorage.removeItem(CODE_KEY); // spent either way: never retry on reload
+    }
+  })();
+  return redeeming;
 }
 
 export function hasPendingInvite() {

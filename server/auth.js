@@ -16,16 +16,21 @@ const requireAccess = h(async (req, res, next) => {
     access = hit.access;
   } else {
     const row = await run(
-      supabase.from('access_tokens').select('workspace_id, role, name').eq('token', token).maybeSingle()
+      supabase.from('access_tokens').select('workspace_id, role, name, invited_by, claimed_at').eq('token', token).maybeSingle()
     );
     if (!row) return res.status(401).json({ error: 'This session or invite link is no longer valid.' });
-    access = { workspaceId: row.workspace_id, actor: { role: row.role, name: row.name } };
+    access = {
+      workspaceId: row.workspace_id,
+      actor: { role: row.role, name: row.name, invitedBy: row.invited_by },
+      claimed: row.role === 'Investigator' || Boolean(row.claimed_at),
+    };
     if (cache.size > 500) cache.clear();
     cache.set(token, { access, exp: Date.now() + CACHE_MS });
   }
 
   req.workspaceId = access.workspaceId;
   req.actor = access.actor;
+  req.claimed = access.claimed;
   next();
 });
 
@@ -35,4 +40,7 @@ function requireInvestigator(req, res, next) {
   res.status(403).json({ error: `The ${req.actor.role} role is read-only.` });
 }
 
-module.exports = { requireAccess, requireInvestigator };
+// Called after a name is confirmed, so the 30-second cache does not keep serving the old state.
+const forget = (token) => cache.delete(token);
+
+module.exports = { requireAccess, requireInvestigator, forget };

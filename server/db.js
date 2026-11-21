@@ -1,4 +1,5 @@
 const { createClient } = require('@supabase/supabase-js');
+const { auditNote } = require('./util');
 
 const url = process.env.SUPABASE_URL;
 const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -66,6 +67,7 @@ const mapAudit = (r) => ({
   evidenceId: r.evidence_id,
   actorRole: r.actor_role,
   actorName: r.actor_name,
+  actorNote: r.actor_note,
   action: r.action,
   details: r.details,
   timestamp: iso(r.ts),
@@ -82,6 +84,7 @@ async function logAudit(ws, { caseId, documentId = null, evidenceId = null, acto
         evidence_id: evidenceId,
         actor_role: actor.role,
         actor_name: actor.name,
+        actor_note: auditNote(actor),
         action,
         details,
       })

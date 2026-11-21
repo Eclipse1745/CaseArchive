@@ -1,7 +1,7 @@
 const crypto = require('crypto');
 const express = require('express');
 const { supabase, run } = require('../db');
-const { requireAccess, requireInvestigator } = require('../auth');
+const { requireAccess, requireInvestigator, forget } = require('../auth');
 const { h } = require('../util');
 
 const router = express.Router();
@@ -36,20 +36,36 @@ router.post('/start', h(async (req, res) => {
   res.status(201).json({ token, name, role: 'Investigator' });
 }));
 
+// Before an invitee confirms their name, the owner's private label is not shown back to them.
 router.get('/me', requireAccess, (req, res) => {
-  res.json({ name: req.actor.name, role: req.actor.role });
+  res.json({ name: req.claimed ? req.actor.name : null, role: req.actor.role, claimed: req.claimed });
 });
 
-// The owner invites a read-only colleague into the SAME workspace. Name and role are fixed in the token.
+// The invitee types their own name, once. It is not verified, and records say so.
+router.post('/claim', requireAccess, h(async (req, res) => {
+  const name = typeof req.body?.name === 'string' ? req.body.name.trim().slice(0, 80) : '';
+  if (!name) return res.status(400).json({ error: 'Please enter your name.' });
+  const token = req.get('x-access-token');
+  const rows = await run(
+    supabase.from('access_tokens').update({ name, claimed_at: new Date().toISOString() })
+      .eq('token', token).neq('role', 'Investigator').is('claimed_at', null).select('token')
+  );
+  if (rows.length === 0) return res.status(409).json({ error: 'The name for this invite is already confirmed.' });
+  forget(token);
+  res.json({ name, role: req.actor.role, claimed: true });
+}));
+
+// The owner invites a read-only colleague into the SAME workspace. The role is fixed in the token; the owner's
+// typed name is only a private label, and the invitee types their own name when they accept (POST /claim).
 router.post('/invites', requireAccess, requireInvestigator, h(async (req, res) => {
   const name = typeof req.body?.name === 'string' ? req.body.name.trim().slice(0, 80) : '';
   const role = req.body?.role;
-  if (!name) return res.status(400).json({ error: 'Enter the invitee\'s name.' });
+  if (!name) return res.status(400).json({ error: 'Enter a label for this invite.' });
   if (!['Prosecutor', 'Court Clerk'].includes(role)) {
     return res.status(400).json({ error: 'Invites can only be for a Prosecutor or a Court Clerk.' });
   }
   const token = newSecret();
-  await run(supabase.from('access_tokens').insert({ token, workspace_id: req.workspaceId, role, name }));
+  await run(supabase.from('access_tokens').insert({ token, workspace_id: req.workspaceId, role, name, label: name, invited_by: req.actor.name }));
   res.status(201).json({ token, name, role });
 }));
 

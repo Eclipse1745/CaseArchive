@@ -5,6 +5,7 @@ const path = require('path');
 const fs = require('fs');
 
 const { requireAccess } = require('./auth');
+const { requireClaimed } = require('./util');
 const sessionRouter = require('./routes/session');
 const casesRouter = require('./routes/cases');
 const documentsRouter = require('./routes/documents');
@@ -23,7 +24,7 @@ app.get('/api/health', (req, res) => res.json({ ok: true }));
 app.use('/api/session', sessionRouter);
 
 // Everything below needs a valid access token (it decides the workspace and the role).
-app.use('/api', requireAccess);
+app.use('/api', requireAccess, requireClaimed);
 
 app.use('/api/cases', casesRouter);
 app.use('/api', documentsRouter);
